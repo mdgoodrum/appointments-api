@@ -3,16 +3,16 @@ module.exports = (sequelize, Sequelize) => {
     provider: {
       type: Sequelize.STRING,
     },
-    timeslot_start: {
+    timeslotStart: {
       type: Sequelize.DATE,
     },
-    timeslot_end: {
+    timeslotEnd: {
       type: Sequelize.DATE,
     },
     status: {
       type: Sequelize.STRING,
     },
-    reserved_at: {
+    reservedAt: {
       type: Sequelize.DATE,
     },
   });

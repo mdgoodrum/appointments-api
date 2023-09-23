@@ -26,8 +26,8 @@ exports.create = (req, res) => {
 
   const appointment = {
     provider: req.body.provider,
-    timeslot_start: req.body.start,
-    timeslot_end: req.body.end,
+    timeslotStart: req.body.start,
+    timeslotEnd: req.body.end,
     status: 'available',
   };
 

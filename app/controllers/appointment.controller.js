@@ -2,7 +2,7 @@ const db = require('../models');
 
 const Appointment = db.appointments;
 
-exports.create = (req, res) => {
+exports.create = async (req, res) => {
   if (!req.body.provider) {
     res.status(400).send({
       message: 'Provider can not be empty!',
@@ -31,27 +31,25 @@ exports.create = (req, res) => {
     status: 'available',
   };
 
-  Appointment.create(appointment)
-    .then((data) => {
-      res.send(data);
-    })
-    .catch((err) => {
-      res.status(500).send({
-        message:
+  try {
+    const data = await Appointment.create(appointment);
+    res.send(data);
+  } catch (err) {
+    res.status(500).send({
+      message:
           err.message || 'Some error occurred while creating the Appointment.',
-      });
     });
+  }
 };
 
-exports.findAll = (req, res) => {
-  Appointment.findAll({ where: { status: 'available' } })
-    .then((data) => {
-      res.send(data);
-    })
-    .catch((err) => {
-      res.status(500).send({
-        message:
-            err.message || 'Some error occurred while retrieving appointments.',
-      });
+exports.findAll = async (req, res) => {
+  try {
+    const data = await Appointment.findAll({ where: { status: 'available' } });
+    res.send(data);
+  } catch (err) {
+    res.status(500).send({
+      message:
+          err.message || 'Some error occurred while retrieving appointments.',
     });
+  }
 };

@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const db = require('../models');
 
 const Appointment = db.appointments;
@@ -24,30 +25,98 @@ exports.create = async (req, res) => {
     return;
   }
 
-  const appointment = {
-    provider: req.body.provider,
-    timeslotStart: req.body.start,
-    timeslotEnd: req.body.end,
-    status: 'available',
-  };
+  const parsedStart = Date.parse(req.body.start);
+  const parsedEnd = Date.parse(req.body.end);
+
+  if (!Number.isInteger(parsedStart)) {
+    res.status(400).send({
+      message: 'Start needs to be a date!',
+    });
+    return;
+  }
+
+  if (!Number.isInteger(parsedEnd)) {
+    res.status(400).send({
+      message: 'End needs to be a date!',
+    });
+    return;
+  }
+
+  if (parsedStart > parsedEnd) {
+    res.status(400).send({
+      message: 'Start needs to be before End!',
+    });
+    return;
+  }
+
+  const startDateString = new Date(parsedStart).toDateString();
+  const endDateString = new Date(parsedEnd).toDateString();
+
+  if (startDateString !== endDateString) {
+    res.status(400).send({
+      message: 'Start and End need to be on the same day!',
+    });
+    return;
+  }
+
+  const startMinutes = new Date(parsedStart).getMinutes();
+
+  if (startMinutes % 15 !== 0) {
+    res.status(400).send({
+      message: 'Start needs to be in 15 minute increments!',
+    });
+    return;
+  }
+
+  const endMinutes = new Date(parsedEnd).getMinutes();
+
+  if (endMinutes % 15 !== 0) {
+    res.status(400).send({
+      message: 'End needs to be in 15 minute increments',
+    });
+  }
+
+  const differenceInMinutes = (new Date(parsedEnd).getTime() - new Date(parsedStart).getTime())
+    / (1000 * 60);
+
+  const numberOfSlots = differenceInMinutes / 15;
+
+  const slots = [];
+
+  let currentSlot = new Date(parsedStart);
+
+  for (let i = 0; i < numberOfSlots; i += 1) {
+    const nextSlot = new Date(currentSlot.getTime() + (15 * 60000));
+    slots.push({
+      provider: req.body.provider,
+      timeslotStart: currentSlot,
+      timeslotEnd: nextSlot,
+      status: 'available',
+    });
+    currentSlot = nextSlot;
+  }
 
   try {
-    const data = await Appointment.create(appointment);
+    const data = await Appointment.bulkCreate(slots);
     res.send(data);
   } catch (err) {
     res.status(500).send({
       message:
-          err.message || 'Some error occurred while creating the Appointment.',
+          err.message || 'Some error occurred while creating the Appointments.',
     });
   }
 };
 
 exports.findAll = async (req, res) => {
+  const validWindow = new Date(new Date().setDate(new Date().getDate() + 1));
+
   try {
     const data = await Appointment.findAll(
       {
-        where:
-        { status: 'available' },
+        where: {
+          status: 'available',
+          timeslotStart: { [Op.gte]: validWindow },
+        },
       },
     );
     res.send(data);
@@ -74,9 +143,18 @@ exports.reserve = async (req, res) => {
         where: { id },
       },
     );
-    if (appointment.status !== 'available') { // add time check here
+    if (appointment.status !== 'available') {
       res.status(400).send({
         message: 'Cant reserve unavailable appointment',
+      });
+      return;
+    }
+
+    const validWindow = new Date(new Date().setDate(new Date().getDate() + 1));
+
+    if (Date.parse(appointment.timeslotStart) < validWindow) {
+      res.status(400).send({
+        message: 'Cant reserve appointment under 24h of the selected time.',
       });
       return;
     }
@@ -110,9 +188,18 @@ exports.confirm = async (req, res) => {
         where: { id },
       },
     );
-    if (appointment.status !== 'reserved') { // add time check here
+    if (appointment.status !== 'reserved') {
       res.status(400).send({
         message: 'Cant confirm unreserved appointment',
+      });
+      return;
+    }
+
+    const validWindow = new Date(new Date().setDate(new Date().getDate() + 1));
+
+    if (Date.parse(appointment.timeslotStart) < validWindow) {
+      res.status(400).send({
+        message: 'Cant confirm appointment under 24h of the selected time.',
       });
       return;
     }

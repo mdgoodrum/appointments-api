@@ -2,6 +2,9 @@ const { Op } = require('sequelize');
 const db = require('../models');
 
 const Appointment = db.appointments;
+const THIRTY_MINUTES = 60000 * 30;
+const FIFTEEN_MINUTES = 60000 * 15;
+const ONE_MINUTES = 60000;
 
 exports.create = async (req, res) => {
   if (!req.body.provider) {
@@ -49,17 +52,17 @@ exports.create = async (req, res) => {
     return;
   }
 
-  const startDateString = new Date(parsedStart).toDateString();
-  const endDateString = new Date(parsedEnd).toDateString();
+  const startAsDate = new Date(parsedStart);
+  const endAsDate = new Date(parsedEnd);
 
-  if (startDateString !== endDateString) {
+  if (startAsDate.toDateString() !== endAsDate.toDateString()) {
     res.status(400).send({
       message: 'Start and End need to be on the same day!',
     });
     return;
   }
 
-  const startMinutes = new Date(parsedStart).getMinutes();
+  const startMinutes = startAsDate.getMinutes();
 
   if (startMinutes % 15 !== 0) {
     res.status(400).send({
@@ -68,7 +71,7 @@ exports.create = async (req, res) => {
     return;
   }
 
-  const endMinutes = new Date(parsedEnd).getMinutes();
+  const endMinutes = endAsDate.getMinutes();
 
   if (endMinutes % 15 !== 0) {
     res.status(400).send({
@@ -76,17 +79,17 @@ exports.create = async (req, res) => {
     });
   }
 
-  const differenceInMinutes = (new Date(parsedEnd).getTime() - new Date(parsedStart).getTime())
-    / (1000 * 60);
+  const differenceInMinutes = (endAsDate.getTime() - startAsDate.getTime())
+    / (ONE_MINUTES);
 
   const numberOfSlots = differenceInMinutes / 15;
 
   const slots = [];
 
-  let currentSlot = new Date(parsedStart);
+  let currentSlot = startAsDate;
 
   for (let i = 0; i < numberOfSlots; i += 1) {
-    const nextSlot = new Date(currentSlot.getTime() + (15 * 60000));
+    const nextSlot = new Date(currentSlot.getTime() + (FIFTEEN_MINUTES));
     slots.push({
       provider: req.body.provider,
       timeslotStart: currentSlot,
@@ -144,7 +147,7 @@ exports.reserve = async (req, res) => {
       },
     );
     if (appointment.status !== 'available') {
-      res.status(400).send({
+      res.status(500).send({
         message: 'Cant reserve unavailable appointment',
       });
       return;
@@ -153,7 +156,7 @@ exports.reserve = async (req, res) => {
     const validWindow = new Date(new Date().setDate(new Date().getDate() + 1));
 
     if (Date.parse(appointment.timeslotStart) < validWindow) {
-      res.status(400).send({
+      res.status(500).send({
         message: 'Cant reserve appointment under 24h of the selected time.',
       });
       return;
@@ -189,7 +192,7 @@ exports.confirm = async (req, res) => {
       },
     );
     if (appointment.status !== 'reserved') {
-      res.status(400).send({
+      res.status(500).send({
         message: 'Cant confirm unreserved appointment',
       });
       return;
@@ -198,7 +201,7 @@ exports.confirm = async (req, res) => {
     const validWindow = new Date(new Date().setDate(new Date().getDate() + 1));
 
     if (Date.parse(appointment.timeslotStart) < validWindow) {
-      res.status(400).send({
+      res.status(500).send({
         message: 'Cant confirm appointment under 24h of the selected time.',
       });
       return;
@@ -215,5 +218,27 @@ exports.confirm = async (req, res) => {
     res.status(500).send({
       message: `Error confirming appointment with id=${id}`,
     });
+  }
+};
+
+exports.expire = async () => {
+  try {
+    const results = await Appointment.findAll(
+      {
+        where: {
+          reservedAt: { [Op.ne]: null },
+        },
+      },
+    );
+    for (let i = 0; i < results.length; i += 1) {
+      const validWindow = new Date(new Date(results[i].reservedAt).getTime() + (THIRTY_MINUTES));
+      if (validWindow < new Date()) {
+        results[i].reservedAt = null;
+        results[i].status = 'available';
+        results[i].save();
+      }
+    }
+  } catch (err) {
+    console.log('Some error occurred while processing expirations.', err);
   }
 };
